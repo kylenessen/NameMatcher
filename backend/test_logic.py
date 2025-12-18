@@ -48,7 +48,8 @@ def test_fresh_user_sees_names(session):
     response = client.get(f"/recommendations/{user.id}")
     assert response.status_code == 200
     names = response.json()
-    assert len(names) > 0
+    # Since we have 7 names and default limit is 10, we should see all of them.
+    assert len(names) == 7
     assert any(n['name'] == "Alice" for n in names)
 
 def test_like_cooldown_manual_timestamps(session):
@@ -70,16 +71,17 @@ def test_like_cooldown_manual_timestamps(session):
     names = response.json()
     assert not any(n['id'] == name.id for n in names), "Liked name appeared immediately (should be hidden for 24h)"
 
-    # 3. Inject a swipe from >24h ago to simulate reappearance
-    # We clear the previous swipe first to avoid confusion or multiple counting
-    swipe = session.exec(select(Swipe).where(Swipe.name_id==name.id)).one()
-    session.delete(swipe)
-    session.commit()    # Actually, simpler: Just add a swipe from 25h ago manually
-    # But wait, logic excludes if ANY swipe is < 24h.
-    # So if I have a swipe now AND a swipe 25h ago, it is still excluded.
-    # I need to simulate time passing.
-    
-    # Better strategy: Manually insert the swipe from 25h ago INSTEAD of swiping via API.
+    # 3. Simulate time passing > 24h
+    # We update the existing swipe to be from 25 hours ago
+    swipe = session.exec(select(Swipe).where(Swipe.name_id == name.id, Swipe.user_id == user.id)).one()
+    swipe.timestamp = datetime.utcnow() - timedelta(hours=25)
+    session.add(swipe)
+    session.commit()
+
+    # 4. Should be visible again
+    response = client.get(f"/recommendations/{user.id}")
+    names = response.json()
+    assert any(n['id'] == name.id for n in names), "Liked name from 25h ago should reappear"
     
 def test_cooldown_logic_via_db(session):
     user = session.exec(select(User).where(User.name == "TestUser")).first()
