@@ -25,7 +25,14 @@ function App() {
   const [loading, setLoading] = useState(false);
 
   const [view, setView] = useState<'swipe' | 'matches'>('swipe');
-  const [matches, setMatches] = useState<Name[]>([]);
+
+  /* Dashboard State */
+  const [dashboard, setDashboard] = useState<{
+    matches: Name[];
+    kyle_likes: Name[];
+    emily_likes: Name[];
+    rejected: Name[];
+  } | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -39,7 +46,7 @@ function App() {
 
   useEffect(() => {
     if (view === 'matches') {
-      fetchMatches();
+      fetchDashboard();
     }
   }, [view]);
 
@@ -52,10 +59,10 @@ function App() {
     }
   };
 
-  const fetchMatches = async () => {
+  const fetchDashboard = async () => {
     try {
-      const res = await axios.get(`${API_URL}/matches`);
-      setMatches(res.data);
+      const res = await axios.get(`${API_URL}/dashboard`);
+      setDashboard(res.data);
     } catch (e) {
       console.error(e);
     }
@@ -204,23 +211,69 @@ function App() {
             )}
           </div>
         ) : (
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 min-h-[50vh]">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-              <span className="text-pink-500">❤️</span> It's a Match!
-            </h2>
-            {matches.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                No matches yet. Keep swiping!
+          <div className="flex-1 w-full max-w-6xl p-4 overflow-y-auto">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 h-full">
+              {/* Matches */}
+              <div className="bg-white rounded-xl shadow-sm border border-pink-100 flex flex-col">
+                <div className="p-4 border-b border-gray-50 bg-pink-50 rounded-t-xl">
+                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                    <span>💖</span> Matches
+                  </h3>
+                </div>
+                <div className="p-4 flex-1 overflow-y-auto space-y-2">
+                  {dashboard?.matches.map(n => (
+                    <div key={n.id} className="p-2 bg-pink-100 text-pink-700 rounded-lg font-medium text-center">{n.name}</div>
+                  ))}
+                  {dashboard?.matches.length === 0 && <span className="text-gray-400 text-sm">No matches yet</span>}
+                </div>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {matches.map(m => (
-                  <div key={m.id} className="p-4 bg-pink-50 rounded-xl text-center font-semibold text-gray-800 hover:bg-pink-100 transition-colors cursor-default">
-                    {m.name}
-                  </div>
-                ))}
+
+              {/* Kyle Likes */}
+              <div className="bg-white rounded-xl shadow-sm border border-blue-100 flex flex-col">
+                <div className="p-4 border-b border-gray-50 bg-blue-50 rounded-t-xl">
+                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                    <span>👦</span> Kyle Likes
+                  </h3>
+                </div>
+                <div className="p-4 flex-1 overflow-y-auto space-y-2">
+                  {dashboard?.kyle_likes.map(n => (
+                    <div key={n.id} className="p-2 bg-blue-50 text-blue-700 rounded-lg font-medium text-center">{n.name}</div>
+                  ))}
+                </div>
               </div>
-            )}
+
+              {/* Emily Likes */}
+              <div className="bg-white rounded-xl shadow-sm border border-purple-100 flex flex-col">
+                <div className="p-4 border-b border-gray-50 bg-purple-50 rounded-t-xl">
+                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                    <span>👧</span> Emily Likes
+                  </h3>
+                </div>
+                <div className="p-4 flex-1 overflow-y-auto space-y-2">
+                  {dashboard?.emily_likes.map(n => (
+                    <div key={n.id} className="p-2 bg-purple-50 text-purple-700 rounded-lg font-medium text-center">{n.name}</div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rejected */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col opacity-60">
+                <div className="p-4 border-b border-gray-50 bg-gray-100 rounded-t-xl">
+                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                    <span>🗑️</span> Rejected
+                  </h3>
+                </div>
+                <div className="p-4 flex-1 overflow-y-auto space-y-2">
+                  {dashboard?.rejected.map(n => (
+                    <div key={n.id} className="p-2 bg-gray-50 text-gray-500 rounded-lg font-medium text-center line-through">{n.name}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="text-center mt-4 text-gray-400 text-sm">
+              Swipe on "My Likes" recursively to strengthen preference!
+            </div>
           </div>
         )}
       </div>

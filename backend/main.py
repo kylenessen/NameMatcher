@@ -41,24 +41,105 @@ def get_users(session: Session = Depends(get_session)):
 def get_recommendations(user_id: int, limit: int = 10, session: Session = Depends(get_session)):
     """
     Get names to swipe on.
-    Logic:
-    1. Exclude names already swiped by this user RECENTLY (e.g., last 30 days).
-    (For now, strict exclusion of ANY swipe to keep it simple, later add spaced repetition).
+    Logic (SRS):
+    1. EXCLUDE if swiped 'dislike'.
+    2. EXCLUDE if swiped 'like' RECENTLY (< 24 hours).
+    3. EXCLUDE if swiped 'like' TOO MANY TIMES (>= 3).
+    4. INCLUDE otherwise (never swiped, or swiped 'like' > 24h ago).
     """
-    # Get IDs of names already swiped by user
-    subquery = select(Swipe.name_id).where(Swipe.user_id == user_id)
-    swiped_name_ids = session.exec(subquery).all()
+    # Fetch all swipes for this user
+    user_swipes = session.exec(select(Swipe).where(Swipe.user_id == user_id).order_by(Swipe.timestamp.desc())).all()
     
-    # Select names NOT in swiped_name_ids
-    # Using simple random sample for now
-    query = select(Name).where(Name.id.not_in(swiped_name_ids)).limit(limit)
+    # Process swipe history
+    excluded_name_ids = set()
+    name_like_counts = {} # name_id -> count
+    
+    now = datetime.utcnow()
+    
+    for s in user_swipes:
+        # If we already decided to exclude this name, skip
+        if s.name_id in excluded_name_ids:
+            continue
+            
+        if s.decision == SwipeDecision.dislike:
+            excluded_name_ids.add(s.name_id)
+        elif s.decision in [SwipeDecision.like, SwipeDecision.superlike]:
+            # Check recurrence
+            name_like_counts[s.name_id] = name_like_counts.get(s.name_id, 0) + 1
+            
+            # If recently swiped (< 24h), exclude
+            if (now - s.timestamp) < timedelta(hours=24):
+                excluded_name_ids.add(s.name_id)
+            
+            # If confirmed enough times, exclude (mastered)
+            if name_like_counts[s.name_id] >= 3:
+                excluded_name_ids.add(s.name_id)
+    
+    # Select names NOT in excluded list
+    # Use limits cautiously with ID filtering if set is huge, but for names it's fine.
+    # To handle "random" with exclusions, we fetch a batch.
+    
+    query = select(Name).where(Name.id.not_in(excluded_name_ids))
+    # Optimize: If we just want random 10, better to fetch IDs or use random order in DB side if possible.
+    # SQLite random: func.random()
+    from sqlalchemy import func
+    query = query.order_by(func.random()).limit(limit)
+    
     results = session.exec(query).all()
-    
-    # If we run out of names, maybe show old ones? For now, just return what we have.
-    # Ideally shuffle them
-    results = list(results)
-    random.shuffle(results)
     return results
+
+@app.get("/dashboard")
+def get_dashboard(session: Session = Depends(get_session)):
+    """
+    Return lists of names for dashboard buckets.
+    """
+    # Fetch all swipes
+    # Join with User and Name
+    results = session.exec(select(Swipe, User, Name).join(User).join(Name)).all()
+    
+    # Organize by name
+    # name_id -> { 'name': str, 'Kyle': 'like', 'Emily': 'dislike' }
+    from collections import defaultdict
+    data = defaultdict(dict)
+    name_objs = {}
+    
+    users = session.exec(select(User)).all()
+    user_names = [u.name for u in users] # ["Kyle", "Emily"]
+    
+    for swipe, user, name in results:
+        data[name.id][user.name] = swipe.decision
+        name_objs[name.id] = name
+        
+    dashboard = {
+        "matches": [],
+        "kyle_likes": [],
+        "emily_likes": [],
+        "rejected": []
+    }
+    
+    for nid, decisions in data.items():
+        name = name_objs[nid]
+        
+        kyle_dec = decisions.get("Kyle")
+        emily_dec = decisions.get("Emily")
+        
+        is_kyle_like = kyle_dec in [SwipeDecision.like, SwipeDecision.superlike]
+        is_emily_like = emily_dec in [SwipeDecision.like, SwipeDecision.superlike]
+        is_kyle_dislike = kyle_dec == SwipeDecision.dislike
+        is_emily_dislike = emily_dec == SwipeDecision.dislike
+        
+        if is_kyle_like and is_emily_like:
+            dashboard["matches"].append(name)
+        elif is_kyle_like and not is_emily_like: # Emily pending or dislike
+            if not is_emily_dislike: # Pending or maybe
+                dashboard["kyle_likes"].append(name)
+        elif is_emily_like and not is_kyle_like:
+            if not is_kyle_dislike:
+                dashboard["emily_likes"].append(name)
+        elif is_kyle_dislike and is_emily_dislike:
+            dashboard["rejected"].append(name)
+            
+    return dashboard
 
 @app.get("/matches", response_model=List[Name])
 def get_matches(session: Session = Depends(get_session)):
