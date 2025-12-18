@@ -5,3 +5,4 @@ pandas
 openai
 httpx
 python-multipart
+python-dotenv

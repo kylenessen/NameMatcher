@@ -114,20 +114,39 @@ def generate_names(session: Session = Depends(get_session)):
     """
     
     # 4. Call AI
-    api_key = os.environ.get("OPENAI_API_KEY")
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    # Fallback to OPENAI_API_KEY if user hasn't switched yet, or warn
+    if not api_key:
+        api_key = os.environ.get("OPENAI_API_KEY")
+
     if not api_key:
         print("Summary for manual review:\n" + summary)
-        return {"message": "OPENAI_API_KEY not set. Check server logs for summary.", "summary": summary}
+        return {"message": "OPENROUTER_API_KEY not set. Check server logs for summary.", "summary": summary}
         
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://openrouter.ai/api/v1",
+    )
+    
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            # Using a model available on OpenRouter (GPT-4o is available via openai/gpt-4o, or others)
+            # Let's default to auto or a specific one. 'openai/gpt-4o' is standard on OpenRouter.
+            model="openai/gpt-4o",
             messages=[
                 {"role": "system", "content": "You are a helpful baby name consultant. Return only JSON."},
                 {"role": "user", "content": summary}
             ],
-            response_format={"type": "json_object"}
+            # OpenRouter supports response_format but sometimes it varies by provider.
+            # GPT-4o usually supports json_object.
+            response_format={"type": "json_object"},
+            extra_headers={
+                "HTTP-Referer": "http://localhost:5173", # Optional, for OpenRouter rankings
+                "X-Title": "Baby Name Tinder",
+            },
         )
         content = response.choices[0].message.content
         import json
