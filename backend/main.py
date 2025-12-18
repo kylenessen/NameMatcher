@@ -31,7 +31,7 @@ def on_startup():
 
 @app.get("/")
 def read_root():
-    return {"message": "Baby Name Tinder API is running"}
+    return {"message": "NameMatch API is running"}
 
 @app.get("/users", response_model=List[User])
 def get_users(session: Session = Depends(get_session)):
@@ -53,6 +53,7 @@ def get_recommendations(user_id: int, limit: int = 10, session: Session = Depend
     # Process swipe history
     excluded_name_ids = set()
     name_like_counts = {} # name_id -> count
+    dislike_counts = {} # name_id -> count
     
     now = datetime.utcnow()
     
@@ -62,7 +63,17 @@ def get_recommendations(user_id: int, limit: int = 10, session: Session = Depend
             continue
             
         if s.decision == SwipeDecision.dislike:
-            excluded_name_ids.add(s.name_id)
+            # Track dislike counts
+            dislike_counts[s.name_id] = dislike_counts.get(s.name_id, 0) + 1
+            
+            # Recency check: If disliked recently (< 24h), exclude temporarily
+            if (now - s.timestamp) < timedelta(hours=24):
+                excluded_name_ids.add(s.name_id)
+
+            # 3-Strike Rule: If disliked 3 times, exclude PERMANENTLY
+            if dislike_counts[s.name_id] >= 3:
+                excluded_name_ids.add(s.name_id)
+
         elif s.decision in [SwipeDecision.like, SwipeDecision.superlike]:
             # Check recurrence
             name_like_counts[s.name_id] = name_like_counts.get(s.name_id, 0) + 1
@@ -130,13 +141,14 @@ def get_dashboard(session: Session = Depends(get_session)):
         
         if is_kyle_like and is_emily_like:
             dashboard["matches"].append(name)
-        elif is_kyle_like and not is_emily_like: # Emily pending or dislike
-            if not is_emily_dislike: # Pending or maybe
-                dashboard["kyle_likes"].append(name)
-        elif is_emily_like and not is_kyle_like:
-            if not is_kyle_dislike:
-                dashboard["emily_likes"].append(name)
+        elif is_kyle_like:
+            # Kyle liked it (and it's not a match, so Emily either Pending or Dislike)
+            dashboard["kyle_likes"].append(name)
+        elif is_emily_like:
+            # Emily liked it (and it's not a match, so Kyle either Pending or Dislike)
+            dashboard["emily_likes"].append(name)
         elif is_kyle_dislike and is_emily_dislike:
+            # Both explicitly disliked
             dashboard["rejected"].append(name)
             
     return dashboard
@@ -259,7 +271,7 @@ def generate_names(session: Session = Depends(get_session)):
             response_format={"type": "json_object"},
             extra_headers={
                 "HTTP-Referer": "http://localhost:5173", # Optional, for OpenRouter rankings
-                "X-Title": "Baby Name Tinder",
+                "X-Title": "NameMatch",
             },
         )
         content = response.choices[0].message.content

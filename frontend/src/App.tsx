@@ -139,7 +139,7 @@ function App() {
       {/* Header */}
       <div className="p-4 flex justify-between items-center bg-white shadow-sm z-10">
         <div className="flex items-center gap-2">
-          <span className="font-bold text-xl text-pink-500">BabyTinder</span>
+          <span className="font-bold text-xl text-pink-500">NameMatch</span>
           <div className="flex bg-gray-100 rounded-lg p-1 ml-4">
             <button
               onClick={() => setView('swipe')}
