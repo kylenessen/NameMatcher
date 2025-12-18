@@ -6,3 +6,5 @@ openai
 httpx
 python-multipart
 python-dotenv
+pytest
+httpx
