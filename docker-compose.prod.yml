@@ -9,6 +9,7 @@ services:
       - "8000"
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL}
       - DB_PATH=/data/database.db
     volumes:
       - output_data:/data
