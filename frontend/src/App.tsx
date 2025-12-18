@@ -24,6 +24,9 @@ function App() {
   const [names, setNames] = useState<Name[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const [view, setView] = useState<'swipe' | 'matches'>('swipe');
+  const [matches, setMatches] = useState<Name[]>([]);
+
   useEffect(() => {
     fetchUsers();
   }, []);
@@ -34,12 +37,27 @@ function App() {
     }
   }, [currentUser]);
 
+  useEffect(() => {
+    if (view === 'matches') {
+      fetchMatches();
+    }
+  }, [view]);
+
   const fetchUsers = async () => {
     try {
       const res = await axios.get(`${API_URL}/users`);
       setUsers(res.data);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const fetchMatches = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/matches`);
+      setMatches(res.data);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -115,6 +133,20 @@ function App() {
       <div className="p-4 flex justify-between items-center bg-white shadow-sm z-10">
         <div className="flex items-center gap-2">
           <span className="font-bold text-xl text-pink-500">BabyTinder</span>
+          <div className="flex bg-gray-100 rounded-lg p-1 ml-4">
+            <button
+              onClick={() => setView('swipe')}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${view === 'swipe' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+            >
+              Swipe
+            </button>
+            <button
+              onClick={() => setView('matches')}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${view === 'matches' ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-900'}`}
+            >
+              Matches
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <button
@@ -122,10 +154,11 @@ function App() {
               setLoading(true);
               try {
                 const res = await axios.post(`${API_URL}/generate`);
-                alert(res.data.message || "Generated!");
+                alert(res.data.message);
                 fetchRecommendations();
-              } catch (e) {
-                alert("Generation failed (check console/logs for API Key errors)");
+              } catch (e: any) {
+                const msg = e.response?.data?.detail || e.message || "Unknown error";
+                alert(`Generation failed: ${msg}`);
                 console.error(e);
               } finally {
                 setLoading(false);
@@ -145,34 +178,49 @@ function App() {
         </div>
       </div>
 
-      {/* Main Swiper */}
-      <div className="flex-1 flex flex-col items-center justify-center p-4 relative">
-        {loading && names.length === 0 ? (
-          <div className="animate-spin text-pink-500">
-            <RefreshCw size={32} />
-          </div>
-        ) : names.length > 0 ? (
-          <div className="relative w-full max-w-sm h-96">
-            {names.slice(0, 2).reverse().map((name, index) => (
-              <SwipeCard
-                key={name.id}
-                name={name.name}
-                onSwipe={index === 1 ? handleSwipe : () => { }}
-              />
-            ))}
-            {/* The top card is simply the last one in this reversed slice, if we render them stacked. 
-                But SwipeCard is absolute. 
-                Wait, key issue: Logic above is slightly flawed for stacking. 
-                The 'top' card should be the first in `names` array.
-                If I render `names[0]`, it's on top.
-                But if I map, the last element rendered is on top physically in DOM (z-index).
-                So I want `names[0]` to be last in DOM list.
-            */}
+      {/* Content */}
+      <div className="flex-1 flex flex-col items-center justify-center p-4 relative overflow-y-auto">
+        {view === 'swipe' ? (
+          <div className="h-full w-full flex flex-col items-center justify-center">
+            {loading && names.length === 0 ? (
+              <div className="animate-spin text-pink-500">
+                <RefreshCw size={32} />
+              </div>
+            ) : names.length > 0 ? (
+              <div className="relative w-full max-w-sm h-96">
+                {names.slice(0, 2).reverse().map((name, index) => (
+                  <SwipeCard
+                    key={name.id}
+                    name={name.name}
+                    onSwipe={index === Math.min(names.length, 2) - 1 ? handleSwipe : () => { }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-gray-700 mb-2">No more names!</h2>
+                <p className="text-gray-500">Check back later or generate more.</p>
+              </div>
+            )}
           </div>
         ) : (
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-700 mb-2">No more names!</h2>
-            <p className="text-gray-500">Check back later or generate more.</p>
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-gray-100 p-6 min-h-[50vh]">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+              <span className="text-pink-500">❤️</span> It's a Match!
+            </h2>
+            {matches.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                No matches yet. Keep swiping!
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {matches.map(m => (
+                  <div key={m.id} className="p-4 bg-pink-50 rounded-xl text-center font-semibold text-gray-800 hover:bg-pink-100 transition-colors cursor-default">
+                    {m.name}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
