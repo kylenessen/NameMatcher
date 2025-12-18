@@ -7,6 +7,8 @@ import random
 from fastapi.middleware.cors import CORSMiddleware
 from database import create_db_and_tables, get_session
 from models import User, Name, Swipe, SwipeDecision
+import csv
+import os
 
 app = FastAPI()
 
@@ -28,6 +30,63 @@ def on_startup():
         if not session.exec(select(User).where(User.name == "Emily")).first():
             session.add(User(name="Emily"))
         session.commit()
+
+        # Seed from existing_names.md if present
+        seed_file = "existing_names.md"
+        if os.path.exists(seed_file):
+            print(f"Found {seed_file}, seeding database...")
+            # Reload users to get IDs
+            kyle = session.exec(select(User).where(User.name == "Kyle")).first()
+            emily = session.exec(select(User).where(User.name == "Emily")).first()
+            
+            with open(seed_file, 'r') as f:
+                # TSV parsing
+                reader = csv.DictReader(f, delimiter='\t')
+                
+                for row in reader:
+                    # Header: Name, Emily, Kyle
+                    # Clean keys just in case
+                    row = {k.strip(): v.strip() for k, v in row.items()}
+                    name_str = row.get("Name")
+                    if not name_str: continue
+                    
+                    # Add Name if not exists
+                    name_obj = session.exec(select(Name).where(Name.name == name_str)).first()
+                    if not name_obj:
+                        name_obj = Name(name=name_str)
+                        session.add(name_obj)
+                        session.commit()
+                        session.refresh(name_obj)
+                    
+                    # Helper to map decision
+                    def map_decision(val):
+                        val = val.upper()
+                        if val == 'Y': return SwipeDecision.like
+                        if val == 'N' or val == 'N!': return SwipeDecision.dislike
+                        if val == 'M': return SwipeDecision.maybe
+                        return None
+
+                    # Kyle Swipe
+                    k_dec = map_decision(row.get("Kyle", ""))
+                    if k_dec and kyle:
+                        # Check if swipe exists
+                        existing_swipe = session.exec(
+                            select(Swipe).where(Swipe.user_id == kyle.id, Swipe.name_id == name_obj.id)
+                        ).first()
+                        if not existing_swipe:
+                            session.add(Swipe(user_id=kyle.id, name_id=name_obj.id, decision=k_dec))
+                    
+                    # Emily Swipe
+                    e_dec = map_decision(row.get("Emily", ""))
+                    if e_dec and emily:
+                        existing_swipe = session.exec(
+                            select(Swipe).where(Swipe.user_id == emily.id, Swipe.name_id == name_obj.id)
+                        ).first()
+                        if not existing_swipe:
+                            session.add(Swipe(user_id=emily.id, name_id=name_obj.id, decision=e_dec))
+            
+            session.commit()
+            print("Seeding complete.")
 
 @app.get("/")
 def read_root():

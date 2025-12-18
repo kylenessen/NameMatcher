@@ -16,7 +16,7 @@ interface Name {
   meaning?: string;
 }
 
-const API_URL = 'http://localhost:8000';
+const API_URL = '/api';
 
 function App() {
   const [users, setUsers] = useState<User[]>([]);

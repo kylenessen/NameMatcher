@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: name_match_backend
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - DB_PATH=/data/database.db
+    volumes:
+      - output_data:/data
+    networks:
+      - app_network
+
+  frontend:
+    build: ./frontend
+    container_name: name_match_frontend
+    restart: unless-stopped
+    ports:
+      - "8888:80"
+    depends_on:
+      - backend
+    networks:
+      - app_network
+
+  # Optional: Cloudflare Tunnel
+  # If you provide TUNNEL_TOKEN, this will expose the app securely.
+  # Remove 'ports' from frontend if you only want it accessible via Tunnel.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: name_match_tunnel
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    networks:
+      - app_network
+    depends_on:
+      - frontend
+    # Only run if token is present (Docker Compose doesn't support conditional services natively easily, 
+    # but this service will just crash/restart loop if no token, so user should remove if not using functionality 
+    # or we can leave it commented out by default? 
+    # Better: User can just not deploy it if they don't want it, or provide a dummy token.)
+    # For now, I'll assume if they fill the var it works.
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  output_data:
